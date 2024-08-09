@@ -17,6 +17,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
+import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
@@ -36,6 +37,10 @@ class NameDialog extends ModalDialog.ModalDialog {
         this._initButtons();
 
         this._valid = false;
+
+        this.connect('opened', () => {
+            this._entry.grab_key_focus();
+        });
     }
 
     _initContent() {
@@ -45,6 +50,10 @@ class NameDialog extends ModalDialog.ModalDialog {
         this._message = new St.Label();
         this._entry = new St.Entry();
         this._entry.clutter_text.set_max_length(MAX_NAME_LENGTH);
+        this._entry.clutter_text.connect('activate', () => {
+            this._valid = true;
+            this.close();
+        })
 
         boxLayout.add_child(this._message);
         boxLayout.add_child(this._entry);
@@ -57,9 +66,10 @@ class NameDialog extends ModalDialog.ModalDialog {
             {
                 label: 'Cancel',
                 action: () => {
-                    this.close();
                     this._valid = false;
-                }
+                    this.close();
+                },
+                key: Clutter.KEY_Escape,
             },
             {
                 label: 'Confirm',
