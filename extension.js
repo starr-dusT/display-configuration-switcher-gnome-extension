@@ -1,24 +1,22 @@
-/* extension.js
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
+/* 
+extension.js
+Copyright (C) 2024 Christophe Van den Abbeele
 
-/* exported init */
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -30,10 +28,14 @@ import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js'
 import {DisplayConfigSwitcher} from './dbus.js';
 import {NameDialog} from './dialog.js';
 
+const NAME_INDEX = 0;
+const HASH_INDEX = 1;
+const LOGICAL_MONITORS_INDEX = 2;
+
 const DisplayConfigQuickMenuToggle = GObject.registerClass(
     class DisplayConfigQuickMenuToggle extends QuickSettings.QuickMenuToggle {
 
-        _init() {
+        _init(settings) {
             // Set QuickMenu name and icon
             super._init({
                 title: 'Displays',
@@ -42,13 +44,15 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             });
             this.menu.setHeader('video-display-symbolic', 'Display Configuration');
             
+            this._settings = settings;
+
             this._displayConfigSwitcher = new DisplayConfigSwitcher();
             this._displayConfigSwitcher.connect('state-changed', () => {
                 this._updateMenu();
             });
             this._nameDialog = new NameDialog();
             this._dialogHandlerId = null;
-            this._configs = [];
+            this._configs = this._settings.get_value('configs').recursiveUnpack();
             this._currentConfigs = [];
         }
 
@@ -74,7 +78,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
 
             this._currentConfigs = [];
             for (let config of this._configs) {
-                if (config.logicalMonitors.every((logicalMonitor) => {
+                if (config[LOGICAL_MONITORS_INDEX].every((logicalMonitor) => {
                     const [ , , , , , monitors, ] = logicalMonitor;
                     return monitors.every((monitor) => 
                         displays.some((display) =>
@@ -100,20 +104,24 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             const currentConfig = this._displayConfigSwitcher.getMonitorsConfig();
 
             for (let config of this._currentConfigs) {
-                const configItem = new PopupMenu.PopupMenuItem(config.name);
+                const configItem = new PopupMenu.PopupMenuItem(config[NAME_INDEX]);
                 
                 configItem.connect('activate', () => {
                     this._onConfig(config);
                 });
 
-                if (config.hash === currentConfig.hash) {
+                if (config[HASH_INDEX] === currentConfig.hash) {
                     configItem.setOrnament(PopupMenu.Ornament.CHECK);
-                    this.subtitle = config.name;
+                    this.subtitle = config[NAME_INDEX];
                     this.checked = true;
                     this._activeConfig = config;
                 }
     
                 this.menu.addMenuItem(configItem);
+            }
+
+            if (this._activeConfig === null) {
+                log(currentConfig);
             }
         }
 
@@ -139,8 +147,13 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             }
         }
 
+        _saveConfigs() {
+            const configsVariant = new GLib.Variant('a(sua(iiduba(ssss)a{sv}))', this._configs);
+            this._settings.set_value('configs', configsVariant);
+        }
+
         _onConfig(config) {
-            this._displayConfigSwitcher.applyMonitorsConfig(config.serial, config.logicalMonitors);
+            this._displayConfigSwitcher.applyMonitorsConfig(config[LOGICAL_MONITORS_INDEX]);
         }
 
         _onAddConfig() {
@@ -154,7 +167,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
 
         _onRenameConfig() {
             this._nameDialog.setMessage(_("Enter a new name for the current configuration."));
-            this._nameDialog.setName(this._activeConfig.name);
+            this._nameDialog.setName(this._activeConfig[NAME_INDEX]);
             this._dialogHandlerId = this._nameDialog.connect('closed', () => {
                 this._onRenameDialogClosed();
             });
@@ -180,8 +193,14 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             }
 
             const currentConfig = this._displayConfigSwitcher.getMonitorsConfig();
-            currentConfig.name = this._nameDialog.getName();
-            this._configs.push(currentConfig);
+            const currentConfigNamed = [
+                this._nameDialog.getName(),
+                currentConfig.hash,
+                currentConfig.logicalMonitors,
+            ];
+
+            this._configs.push(currentConfigNamed);
+            this._saveConfigs();
             this._updateMenu();
         }
 
@@ -195,7 +214,12 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 return;
             }
 
-            this._activeConfig.name = this._nameDialog.getName();
+            const newName = this._nameDialog.getName();
+
+            if (this._activeConfig[NAME_INDEX] !== newName) {
+                this._activeConfig[NAME_INDEX] = newName;
+                this._saveConfigs();
+            }
             this._updateMenu();
         }
     });
@@ -203,7 +227,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
 export default class DisplayConfigSwitcherExtension extends Extension {
     enable() {
         this._indicator = new QuickSettings.SystemIndicator();
-        this._indicator.quickSettingsItems.push(new DisplayConfigQuickMenuToggle());
+        this._indicator.quickSettingsItems.push(new DisplayConfigQuickMenuToggle(this.getSettings()));
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
     }
 

@@ -4,5 +4,6 @@
     "description": "Quickly change the display configuration from the system menu.",
     "shell-version": [ "46" ],
     "url": "https://gitlab.com/knokelmaat/display-configuration-switcher-gnome-extension",
+    "settings-schema": "org.gnome.shell.extensions.display-configuration-switcher",
     "version": 1
 }

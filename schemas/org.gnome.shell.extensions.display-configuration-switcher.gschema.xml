@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.display-configuration-switcher" path="/org/gnome/shell/extensions/display-configuration-switcher/">
+    <key name="configs" type="a(sua(iiduba(ssss)a{sv}))">
+      <default>[]</default>
+      <summary>List of all saved configurations.</summary>
+      <description>
+        List of all saved configurations:
+        array a() of configs:
+          s: name
+          u: hash
+          a(iiduba(ssss)a{sv}): logical_monitors
+      </description>
+    </key>
+  </schema>
+</schemalist>

@@ -16,9 +16,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-const { Gio } = imports.gi;
-const GLib = imports.gi.GLib;
-const GObject = imports.gi.GObject;
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 
 const DisplayConfigInterface = 
     '<node>\
@@ -72,10 +72,10 @@ export const DisplayConfigSwitcher = GObject.registerClass({
 
     getMonitorsConfig() {
         const config = {
-            serial: this._currentState[0],
             logicalMonitors: this._currentState[2],
-            properties: this._currentState[3],
         };
+
+        config.logicalMonitors.sort();
 
         const allKeys = [];
         JSON.stringify(config, (k, v) => { allKeys.push(k); return v; });
@@ -85,17 +85,17 @@ export const DisplayConfigSwitcher = GObject.registerClass({
         return config;
     }
 
-    applyMonitorsConfig(serial, logicalMonitors, usePrompt = false, properties = {}) {
+    applyMonitorsConfig(logicalMonitors, usePrompt = false) {
         if (this._proxy === null) {
             log('Proxy is not initialized');
             return;
         }
 
         this._proxy.ApplyMonitorsConfigRemote(
-            serial,
+            this._currentState[0],
             usePrompt ? 2 : 1,
             this._logicalMonitorsInputToOutput(logicalMonitors),
-            properties);
+            {});
     }
 
     _updateState() {
