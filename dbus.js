@@ -20,27 +20,6 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 
-const DisplayConfigInterface = 
-    '<node>\
-        <interface name="org.gnome.Mutter.DisplayConfig">\
-            <property name="ApplyMonitorsConfigAllowed" type="b" access="read" />\
-            <signal name="MonitorsChanged" />\
-            <method name="GetCurrentState">\
-                <arg name="serial" direction="out" type="u" />\
-                <arg name="monitors" direction="out" type="a((ssss)a(siiddada{sv})a{sv})" />\
-                <arg name="logical_monitors" direction="out" type="a(iiduba(ssss)a{sv})" />\
-                <arg name="properties" direction="out" type="a{sv}" />\
-            </method>\
-            <method name="ApplyMonitorsConfig">\
-                <arg name="serial" direction="in" type="u" />\
-                <arg name="method" direction="in" type="u" />\
-                <arg name="logical_monitors" direction="in" type="a(iiduba(ssa{sv}))" />\
-                <arg name="properties" direction="in" type="a{sv}" />\
-            </method>\
-        </interface>\
-    </node>';
-
-
 export const DisplayConfigSwitcher = GObject.registerClass({
     Signals: {
         'state-changed': {},
@@ -50,24 +29,30 @@ export const DisplayConfigSwitcher = GObject.registerClass({
         super(constructProperties);
         this._currentState = null;
 
-        const DisplayConfigProxy = Gio.DBusProxy.makeProxyWrapper(DisplayConfigInterface);
+        this._initProxy();
+    }
 
+    async _initProxy() {
+        Gio._promisify(Gio.DBusProxy, 'new_for_bus');
 
-        this._proxy = new DisplayConfigProxy(
-            Gio.DBus.session,
+        this._proxy = await Gio.DBusProxy.new_for_bus(
+            Gio.BusType.SESSION,
+            Gio.DBusProxyFlags.NONE,
+            null,
             'org.gnome.Mutter.DisplayConfig',
             '/org/gnome/Mutter/DisplayConfig',
-            (proxy, error) => {
-                if (error) {
-                    log(error.message);
-                } else {
-                    this._proxy.connectSignal('MonitorsChanged',
-                        () => {
-                            this._updateState();
-                        });
-                    this._updateState();
-                }
+            'org.gnome.Mutter.DisplayConfig',
+            null
+        );
+
+        Gio._promisify(this._proxy, 'call');
+
+        this._proxy.connect('g-signal::MonitorsChanged',
+            () => {
+                this._updateState();
             });
+
+        this._updateState();
     }
 
     getMonitorsConfig() {
@@ -85,34 +70,38 @@ export const DisplayConfigSwitcher = GObject.registerClass({
         return config;
     }
 
-    applyMonitorsConfig(logicalMonitors, usePrompt = false) {
+    async applyMonitorsConfig(logicalMonitors, usePrompt = false) {
         if (this._proxy === null) {
             log('Proxy is not initialized');
             return;
         }
 
-        this._proxy.ApplyMonitorsConfigRemote(
+        const parameters = new GLib.Variant('(uua(iiduba(ssa{sv}))a{sv})', [
             this._currentState[0],
             usePrompt ? 2 : 1,
             this._logicalMonitorsInputToOutput(logicalMonitors),
-            {});
+            {}
+        ]);
+
+        this._proxy.call(
+            'ApplyMonitorsConfig',
+            parameters,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            null
+        );
     }
 
-    _updateState() {
-        if (this._proxy === null) {
-            log('Proxy is not initialized');
-            return;
-        }
-
-        this._proxy.GetCurrentStateRemote((returnValue, errorObj) => {
-            if (errorObj === null) {
-                this._currentState = returnValue;
-                this.emit('state-changed');
-            } else {
-                this._currentState = null;
-                logError(errorObj);
-            }
-        });
+    async _updateState() {
+        const reply = await this._proxy.call(
+            'GetCurrentState',
+            null,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            null
+        );
+        this._currentState = reply.recursiveUnpack();
+        this.emit('state-changed');
     }
 
     getPhysicalDisplayInfo() {
