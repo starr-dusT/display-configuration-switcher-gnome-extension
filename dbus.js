@@ -56,21 +56,37 @@ export const DisplayConfigSwitcher = GObject.registerClass({
     }
 
     getMonitorsConfig() {
-        const config = {
-            logicalMonitors: this._currentState[2],
-        };
+        const config = {};
 
-        config.logicalMonitors.sort();
+        config.properties = {};
+        const properties = this._currentState[3];
 
-        const allKeys = [];
-        JSON.stringify(config, (k, v) => { allKeys.push(k); return v; });
-        const sortedString = JSON.stringify(config, allKeys.sort());
-        config.hash = (new GLib.String(sortedString)).hash();
+
+        if (properties["supports-changing-layout-mode"] === true) {
+            const layoutMode = properties["layout-mode"];
+            if (layoutMode !== undefined) {
+                // Immediately save a{sv} values as GVariant for easy packing later
+                config.properties["layout-mode"] = GLib.Variant.new_uint32(layoutMode);
+            }
+        }
+
+        config.logicalMonitors = this._getUpdatedLogicalMonitors();
+
+        const physicalDisplays = this.getPhysicalDisplayInfo();
+        config.physicalDisplays = physicalDisplays.map(v => v.id);
+
+        // Use GVariant string representation for generating hash
+        const tempVariant = new GLib.Variant('(a(iiduba(ssa{sv}))a{sv}a(ssss))', [
+            config.logicalMonitors,
+            config.properties,
+            config.physicalDisplays
+        ]);
+        config.hash = (new GLib.String(tempVariant.print(false))).hash();
 
         return config;
     }
 
-    async applyMonitorsConfig(logicalMonitors, usePrompt = false) {
+    async applyMonitorsConfig(logicalMonitors, properties, usePrompt = false) {
         if (this._proxy === null) {
             log('Proxy is not initialized');
             return;
@@ -79,8 +95,8 @@ export const DisplayConfigSwitcher = GObject.registerClass({
         const parameters = new GLib.Variant('(uua(iiduba(ssa{sv}))a{sv})', [
             this._currentState[0],
             usePrompt ? 2 : 1,
-            this._logicalMonitorsInputToOutput(logicalMonitors),
-            {}
+            logicalMonitors,
+            properties,
         ]);
 
         this._proxy.call(
@@ -108,15 +124,21 @@ export const DisplayConfigSwitcher = GObject.registerClass({
         if (this._currentState === null) {
             return null;
         }
-        const [, monitors, , ] = this._currentState;
+        const monitors = this._currentState[1];
         const displays = [];
 
         for (let monitor of monitors) {
-            const [id, modes, ] = monitor;
+            const [id, modes, props] = monitor;
             const display = {};
 
             display.id = id;
+            display.props = {};
 
+            const enableUnderscanning = props["is-underscanning"];
+            if (enableUnderscanning !== undefined) {
+                // Immediately save a{sv} values as GVariant for easy packing later
+                display.props["underscanning"] = GLib.Variant.new_boolean(enableUnderscanning);
+            }
             for (let mode of modes) {
                 const [mode_id, , , , , , opt_props] = mode;
                 if (opt_props['is-current']) {
@@ -129,25 +151,32 @@ export const DisplayConfigSwitcher = GObject.registerClass({
         return displays;
     }
 
-    _logicalMonitorsInputToOutput(logicalMonitors) {
+    _getUpdatedLogicalMonitors() {
         if (this._currentState === null) {
             return null;
         }
-        
+
+        const logicalMonitors = this._currentState[2];
         const updatedLogicalMonitors = [];
         const displays = this.getPhysicalDisplayInfo();
 
-        for (let disp of displays) {
-            for (let logicalMonitor of logicalMonitors) {
-                const [x, y, scale, transform, primary, monitors, ] = logicalMonitor;
-                for (let monitor of monitors) {
-                    const id = monitor;
+        for (let logicalMonitor of logicalMonitors) {
+            const [x, y, scale, transform, primary, monitors,] = logicalMonitor;
+            const updatedLogicalMonitor = [x, y, scale, transform, primary, []]
+            for (let monitor of monitors) {
+                const id = monitor;
+                for (let disp of displays) {
                     if (id.every((element, index) => element === disp.id[index])) {
-                        updatedLogicalMonitors.push([x, y, scale, transform, primary, [[disp.id[0], disp.mode_id, {}]]]);
+                        updatedLogicalMonitor[5].push([disp.id[0], disp.mode_id, disp.props]);
                     }
                 }
             }
+            // Make sure to sort for correct hash later
+            updatedLogicalMonitor[5].sort();
+            updatedLogicalMonitors.push(updatedLogicalMonitor);
         }
+        // Make sure to sort for correct hash later
+        updatedLogicalMonitors.sort();
         return updatedLogicalMonitors;
     }
 

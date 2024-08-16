@@ -19,18 +19,20 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 
-import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
-import {DisplayConfigSwitcher} from './dbus.js';
-import {NameDialog} from './dialog.js';
+import { DisplayConfigSwitcher } from './dbus.js';
+import { NameDialog } from './dialog.js';
 
 const NAME_INDEX = 0;
 const HASH_INDEX = 1;
 const LOGICAL_MONITORS_INDEX = 2;
+const PROPERTIES_INDEX = 3;
+const PHYSICAL_DISPLAYS_INDEX = 4;
 
 const DisplayConfigQuickMenuToggle = GObject.registerClass(
     class DisplayConfigQuickMenuToggle extends QuickSettings.QuickMenuToggle {
@@ -43,7 +45,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 toggleMode: false,
             });
             this.menu.setHeader('video-display-symbolic', 'Display Configuration');
-            
+
             this._settings = settings;
 
             this._displayConfigSwitcher = new DisplayConfigSwitcher();
@@ -52,7 +54,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             });
             this._nameDialog = new NameDialog();
             this._dialogHandlerId = null;
-            this._configs = this._settings.get_value('configs').recursiveUnpack();
+            this._configs = this._settings.get_value('configs').deepUnpack();
             this._currentConfigs = [];
         }
 
@@ -74,18 +76,15 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
         }
 
         _filterConfigs() {
-            const displays = this._displayConfigSwitcher.getPhysicalDisplayInfo();
+            const activeDisplays = this._displayConfigSwitcher.getPhysicalDisplayInfo();
 
             this._currentConfigs = [];
             for (let config of this._configs) {
-                if (config[LOGICAL_MONITORS_INDEX].every((logicalMonitor) => {
-                    const [ , , , , , monitors, ] = logicalMonitor;
-                    return monitors.every((monitor) => 
-                        displays.some((display) =>
-                            monitor.every((element, index) => element === display.id[index])
-                        )
-                    );
-                })) {
+                const displays = config[PHYSICAL_DISPLAYS_INDEX];
+                if (displays.every(display =>
+                    activeDisplays.some(activeDisplay =>
+                        activeDisplay.id.every((element, index) => element === display[index])
+                    ))) {
                     this._currentConfigs.push(config);
                 }
             };
@@ -105,7 +104,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
 
             for (let config of this._currentConfigs) {
                 const configItem = new PopupMenu.PopupMenuItem(config[NAME_INDEX]);
-                
+
                 configItem.connect('activate', () => {
                     this._onConfig(config);
                 });
@@ -116,12 +115,8 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                     this.checked = true;
                     this._activeConfig = config;
                 }
-    
-                this.menu.addMenuItem(configItem);
-            }
 
-            if (this._activeConfig === null) {
-                log(currentConfig);
+                this.menu.addMenuItem(configItem);
             }
         }
 
@@ -138,7 +133,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                     this._onRenameConfig();
                 });
                 this.menu.addMenuItem(renameConfigItem);
-                
+
                 const removeConfigItem = new PopupMenu.PopupImageMenuItem(_("Remove Configuration"), 'list-remove-symbolic');
                 removeConfigItem.connect('activate', () => {
                     this._onRemoveConfig();
@@ -148,12 +143,12 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
         }
 
         _saveConfigs() {
-            const configsVariant = new GLib.Variant('a(sua(iiduba(ssss)a{sv}))', this._configs);
+            const configsVariant = new GLib.Variant('a(sua(iiduba(ssa{sv}))a{sv}a(ssss))', this._configs);
             this._settings.set_value('configs', configsVariant);
         }
 
         _onConfig(config) {
-            this._displayConfigSwitcher.applyMonitorsConfig(config[LOGICAL_MONITORS_INDEX]);
+            this._displayConfigSwitcher.applyMonitorsConfig(config[LOGICAL_MONITORS_INDEX], config[PROPERTIES_INDEX]);
         }
 
         _onAddConfig() {
@@ -197,6 +192,8 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 this._nameDialog.getName(),
                 currentConfig.hash,
                 currentConfig.logicalMonitors,
+                currentConfig.properties,
+                currentConfig.physicalDisplays,
             ];
 
             this._configs.push(currentConfigNamed);
