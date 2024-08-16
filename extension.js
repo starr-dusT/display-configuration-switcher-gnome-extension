@@ -174,6 +174,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             if (index !== -1) {
                 this._configs.splice(index, 1);
             }
+            this._saveConfigs();
             this._updateMenu();
         }
 
