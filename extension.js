@@ -56,6 +56,8 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             this._dialogHandlerId = null;
             this._configs = this._settings.get_value('configs').deepUnpack();
             this._currentConfigs = [];
+
+            this.connect('clicked', () => this._onClicked());
         }
 
         _addDummyItem(message) {
@@ -145,6 +147,22 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
         _saveConfigs() {
             const configsVariant = new GLib.Variant('a(sua(iiduba(ssa{sv}))a{sv}a(ssss))', this._configs);
             this._settings.set_value('configs', configsVariant);
+        }
+
+        _onClicked() {
+            const nConfigs = this._currentConfigs.length;
+            if (nConfigs === 0) {
+                return;
+            }
+
+            if (this._activeConfig === null) {
+                this._onConfig(this._currentConfigs[0]);
+                return;
+            }
+
+            const currentIndex = this._currentConfigs.indexOf(this._activeConfig);
+            const newIndex = currentIndex === (nConfigs - 1) ? 0 : currentIndex + 1;
+            this._onConfig(this._currentConfigs[newIndex]);
         }
 
         _onConfig(config) {
