@@ -56,6 +56,8 @@ export const DisplayConfigSwitcher = GObject.registerClass({
     }
 
     getMonitorsConfig() {
+        if (this._currentState === null) { return null; }
+
         const config = {};
 
         config.properties = {};
@@ -121,9 +123,8 @@ export const DisplayConfigSwitcher = GObject.registerClass({
     }
 
     getPhysicalDisplayInfo() {
-        if (this._currentState === null) {
-            return null;
-        }
+        if (this._currentState === null) { return null; }
+
         const monitors = this._currentState[1];
         const displays = [];
 
