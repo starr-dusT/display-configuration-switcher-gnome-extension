@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+SOURCES="dbus.js dialog.js extension.js prefs.js"
 
 function Help()
 {
@@ -46,7 +47,7 @@ done
 
 if [[ $build ]]; then
     EXTRA_SOURCES=""
-    for SCRIPT in *.js; do
+    for SCRIPT in ${SOURCES}; do
         EXTRA_SOURCES="${EXTRA_SOURCES} --extra-source=${SCRIPT}"
     done
     
