@@ -31,7 +31,6 @@ const PHYSICAL_DISPLAYS_INDEX = 4;
 export default class DisplayConfigSwitcherPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         // Create a preferences page, with a single group
-        this._window = window;
         this._configs = [];
         this._configRows = [];
         this._settings = this.getSettings();
@@ -40,13 +39,20 @@ export default class DisplayConfigSwitcherPreferences extends ExtensionPreferenc
             title: _('General'),
             icon_name: 'dialog-information-symbolic',
         });
-        this._window.add(page);
+        window.add(page);
 
         this._configGroup = new Adw.PreferencesGroup({
             title: _('Saved Configurations'),
             description: _('Rename or remove the saved display configurations.'),
         });
         page.add(this._configGroup);
+
+        window.connect('close-request', () => {
+            this._configs = null;
+            this._configRows = null;
+            this._settings = null;
+            this._configGroup = null;
+        });
 
         this._settings.connect('changed::configs', () => {
             this.onConfigsChanged();
@@ -132,14 +138,7 @@ export default class DisplayConfigSwitcherPreferences extends ExtensionPreferenc
 
             const infoPopover = new Gtk.Popover();
 
-            const tempVariant = new GLib.Variant('(a(iiduba(ssa{sv}))a{sv}a(ssss))', [
-                config[LOGICAL_MONITORS_INDEX],
-                config[PROPERTIES_INDEX],
-                config[PHYSICAL_DISPLAYS_INDEX]
-            ]);
-
             const infoLabel = new Gtk.Label({
-                //label: tempVariant.print(true)
                 label: this._prettyPrintConfig(config)
             });
 
