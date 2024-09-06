@@ -44,11 +44,16 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 iconName: 'video-display-symbolic',
                 toggleMode: false,
             });
+
+            this.connect('destroy', () => this._onDestroy());
+
             this.menu.setHeader('video-display-symbolic', 'Display Configuration');
 
             this._extension = extension;
             this._settings = this._extension.getSettings();
-            this._settings.connect('changed::configs', () => {
+            this._lastConfigIndex = this._settings.get_uint('last-config-index');
+            this._lastConfigLoaded = false;
+            this._configsChangedHandler = this._settings.connect('changed::configs', () => {
                 this._onConfigsChanged();
             });
 
@@ -66,6 +71,14 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             this._onConfigsChanged();
         }
 
+        _onDestroy() {
+            this._displayConfigSwitcher.disconnectSignals();
+            this._settings.disconnect(this._configsChangedHandler);
+            if (this._dialogHandlerId) {
+                this._nameDialog.disconnect(this._dialogHandlerId);
+            }
+        }
+
         _onConfigsChanged() {
             this._configs = this._settings.get_value('configs').deepUnpack();
             this._updateMenu();
@@ -81,6 +94,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             this.menu.removeAll();
 
             this._filterConfigs();
+            this._loadDefaultIfNeeded();
             this._addConfigItems();
 
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -103,6 +117,16 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                     this._currentConfigs.push(config);
                 }
             };
+        }
+
+        _loadDefaultIfNeeded() {
+            if (this._displayConfigSwitcher.hasState() && !this._lastConfigLoaded && this._currentConfigs.length > 0) {
+                this._lastConfigLoaded = true;
+                const lastConfig = this._configs.length > this._lastConfigIndex ? this._configs[this._lastConfigIndex] : null;
+                if (lastConfig !== null && (this._currentConfigs.indexOf(lastConfig) > -1)) {
+                    this._onConfig(lastConfig);
+                }
+            }
         }
 
         _addConfigItems() {
@@ -131,6 +155,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                     this.subtitle = config[NAME_INDEX];
                     this.checked = true;
                     this._activeConfig = config;
+                    this._saveLastConfigIndex(this._configs.indexOf(config));
                 }
 
                 this.menu.addMenuItem(configItem);
@@ -156,6 +181,10 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
         _saveConfigs() {
             const configsVariant = new GLib.Variant('a(sua(iiduba(ssa{sv}))a{sv}a(ssss))', this._configs);
             this._settings.set_value('configs', configsVariant);
+        }
+
+        _saveLastConfigIndex(i) {
+            this._settings.set_uint('last-config-index', i);
         }
 
         _onClicked() {

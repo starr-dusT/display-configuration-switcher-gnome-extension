@@ -14,5 +14,9 @@
           a(ssss): physical displays
       </description>
     </key>
+    <key name="last-config-index" type="u">
+      <default>0</default>
+      <summary>Global index of the most recently active configuration.</summary>
+    </key>
   </schema>
 </schemalist>

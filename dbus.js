@@ -28,8 +28,16 @@ export const DisplayConfigSwitcher = GObject.registerClass({
     constructor(constructProperties = {}) {
         super(constructProperties);
         this._currentState = null;
+        this._monitorsChangedHandler = null;
 
         this._initProxy();
+    }
+
+    disconnectSignals() {
+        if (this._monitorsChangedHandler !== null) {
+            this._proxy.disconnect(this._monitorsChangedHandler);
+            this._monitorsChangedHandler = null;
+        }
     }
 
     async _initProxy() {
@@ -47,7 +55,7 @@ export const DisplayConfigSwitcher = GObject.registerClass({
 
         Gio._promisify(this._proxy, 'call');
 
-        this._proxy.connect('g-signal::MonitorsChanged',
+        this._monitorsChangedHandler = this._proxy.connect('g-signal::MonitorsChanged',
             () => {
                 this._updateState();
             });
@@ -120,6 +128,10 @@ export const DisplayConfigSwitcher = GObject.registerClass({
         );
         this._currentState = reply.recursiveUnpack();
         this.emit('state-changed');
+    }
+
+    hasState() {
+        return this._currentState !== null;
     }
 
     getPhysicalDisplayInfo() {
