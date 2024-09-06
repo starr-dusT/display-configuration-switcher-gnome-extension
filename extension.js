@@ -45,8 +45,6 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 toggleMode: false,
             });
 
-            this.connect('destroy', () => this._onDestroy());
-
             this.menu.setHeader('video-display-symbolic', 'Display Configuration');
 
             this._extension = extension;
@@ -71,12 +69,14 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             this._onConfigsChanged();
         }
 
-        _onDestroy() {
+        destroy() {
             this._displayConfigSwitcher.disconnectSignals();
             this._settings.disconnect(this._configsChangedHandler);
             if (this._dialogHandlerId) {
                 this._nameDialog.disconnect(this._dialogHandlerId);
             }
+
+            super.destroy();
         }
 
         _onConfigsChanged() {
