@@ -1,6 +1,6 @@
 {
     "uuid": "display-configuration-switcher@knokelmaat.gitlab.com",
-    "name": "Display Configuration switcher",
+    "name": "Display Configuration Switcher",
     "description": "Quickly change the display configuration from the system menu.",
     "shell-version": [ "46" ],
     "url": "https://gitlab.com/knokelmaat/display-configuration-switcher-gnome-extension",
