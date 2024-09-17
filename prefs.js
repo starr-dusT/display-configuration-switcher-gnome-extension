@@ -17,8 +17,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
 import GLib from 'gi://GLib';
-import Gtk from 'gi://Gtk'
+import GObject from 'gi://GObject';
+import Gtk from 'gi://Gtk';
 
 import { ExtensionPreferences, gettext as _ } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
@@ -32,7 +34,6 @@ export default class DisplayConfigSwitcherPreferences extends ExtensionPreferenc
     fillPreferencesWindow(window) {
         // Create a preferences page, with a single group
         this._configs = [];
-        this._configRows = [];
         this._settings = this.getSettings();
 
         const page = new Adw.PreferencesPage({
@@ -41,17 +42,41 @@ export default class DisplayConfigSwitcherPreferences extends ExtensionPreferenc
         });
         window.add(page);
 
-        this._configGroup = new Adw.PreferencesGroup({
+        const configGroup = new Adw.PreferencesGroup({
             title: _('Saved Configurations'),
             description: _('Rename or remove the saved display configurations.'),
         });
-        page.add(this._configGroup);
+        page.add(configGroup);
+
+        this._configListBox = new Gtk.ListBox();
+        this._configListBox.add_css_class("boxed-list");
+        configGroup.add(this._configListBox);
+
+        // Drag and Drop: Drop Handling
+        const dropTarget = Gtk.DropTarget.new(GObject.TYPE_INT, Gdk.DragAction.MOVE);
+        this._configListBox.add_controller(dropTarget);
+
+        dropTarget.connect("drop", (_drop, value, _x, y) => {
+            const targetRow = this._configListBox.get_row_at_y(y);
+            if (!targetRow || value > this._configs.length - 1) {
+                return false;
+            }
+            const targetIndex = targetRow.get_index();
+            const sourceIndex = value;
+
+            const sourceConfig = this._configs.splice(sourceIndex, 1)[0];
+
+            this._configs.splice(targetIndex, 0, sourceConfig);
+
+            this._saveConfigs();
+
+            return true;
+        })
 
         window.connect('close-request', () => {
             this._configs = null;
-            this._configRows = null;
             this._settings = null;
-            this._configGroup = null;
+            this._configListBox = null;
         });
 
         this._settings.connect('changed::configs', () => {
@@ -119,8 +144,9 @@ export default class DisplayConfigSwitcherPreferences extends ExtensionPreferenc
     }
 
     _updateConfigGroup() {
-        for (let row of this._configRows) {
-            this._configGroup.remove(row);
+        let row;
+        while ((row = this._configListBox.get_last_child()) !== null) {
+            this._configListBox.remove(row);
         }
 
         for (const [index, config] of this._configs.entries()) {
@@ -130,6 +156,10 @@ export default class DisplayConfigSwitcherPreferences extends ExtensionPreferenc
                 show_apply_button: true,
             });
             row.connect('apply', () => { this.onEditApply(index); });
+
+            row.add_prefix(new Gtk.Image({
+                icon_name: "list-drag-handle-symbolic"
+            }));
 
             const infoButton = new Gtk.MenuButton({
                 icon_name: 'dialog-information-symbolic',
@@ -155,15 +185,69 @@ export default class DisplayConfigSwitcherPreferences extends ExtensionPreferenc
             removeButton.connect('clicked', () => { this.onRemoveClicked(index); });
             removeButton.add_css_class('destructive-action');
 
-
             row.add_suffix(removeButton);
-            this._configGroup.add(row);
-            this._configRows.push(row);
+
+            // Implement Drag and Drop
+            const dropController = new Gtk.DropControllerMotion();
+            const dragSource = new Gtk.DragSource({
+                actions: Gdk.DragAction.MOVE,
+            });
+            row.add_controller(dragSource);
+            row.add_controller(dropController);
+
+            let dragX;
+            let dragY;
+
+            dragSource.connect("prepare", (_source, x, y) => {
+                dragX = x;
+                dragY = y;
+
+                const value = new GObject.Value();
+                value.init(GObject.TYPE_INT);
+                value.set_int(index);
+
+                return Gdk.ContentProvider.new_for_value(value);
+            });
+
+            dragSource.connect("drag-begin", (_source, drag) => {
+                const dragWidget = new Gtk.ListBox();
+
+                dragWidget.set_size_request(row.get_width(), row.get_height());
+                dragWidget.add_css_class("boxed-list");
+
+                const dragRow = new Adw.EntryRow({
+                    text: config[NAME_INDEX],
+                    title: _('Configuration Name'),
+                    show_apply_button: true,
+                });
+                dragRow.add_prefix(new Gtk.Image({
+                    icon_name: "list-drag-handle-symbolic"
+                }));
+
+                dragWidget.append(dragRow);
+                dragWidget.drag_highlight_row(dragRow);
+
+                const icon = Gtk.DragIcon.get_for_drag(drag);
+                icon.child = dragWidget;
+
+                drag.set_hotspot(dragX, dragY);
+            });
+
+            dropController.connect("enter", () => {
+                this._configListBox.drag_highlight_row(row);
+            });
+
+            dropController.connect("leave", () => {
+                this._configListBox.drag_unhighlight_row();
+            });
+
+
+            this._configListBox.append(row);
         }
     }
 
     onEditApply(index) {
-        this._configs[index][NAME_INDEX] = this._configRows[index].get_text();
+        this._configs[index][NAME_INDEX] = this._configListBox.get_row_at_index(index).get_text();
         this._saveConfigs();
     }
 
