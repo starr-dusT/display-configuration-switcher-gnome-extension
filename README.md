@@ -1,5 +1,7 @@
 # Display Configuration Switcher (GNOME Extension)
 
+"Forked" from [here](https://gitlab.com/knokelmaat/display-configuration-switcher-gnome-extension).
+
 ## Description
 Quickly change the display configuration from the system menu.
 
